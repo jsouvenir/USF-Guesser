@@ -1,12 +1,11 @@
 name: Frontend CI
 
-on: 
+on:
     push:
-        paths: ["frontend/**", ".github/workflows/frontend.yml"]
+        branches: [main]
     pull_request:
-        paths: ["frontend/**", ".github/workflows/frontend.yml"]
 jobs:
-    Build:
+    frontend:
         runs-on: ubuntu-latest
         defaults:
             run:

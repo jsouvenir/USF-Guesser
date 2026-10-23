@@ -2,11 +2,10 @@ name: Backend CI
 
 on:
     push:
-        paths: ["backend/**", ".github/workflows/backend.yml"]
+        branches: [main]
     pull_request:
-        paths: ["backend/**", ".github/workflows/backend.yml"]
 jobs:
-    test:
+    backend:
         runs-on: ubuntu-latest
         defaults:
             run:
@@ -21,7 +20,7 @@ jobs:
             - name: Format Check
               run: uv run ruff format --check .
             - name: Type Check
-              run: uv run mypy app
+              run: uv run mypy app tests
             - name: Tests
               run: uv run pytest
 
