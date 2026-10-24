@@ -260,6 +260,7 @@ The daily challenge resets at **midnight America/New_York**.
 USF-Guesser/
 ├── README.md
 ├── DESIGN.md
+├── CONTRIBUTING.md        # setup and workflow for collaborators
 ├── LICENSE
 ├── .env.example
 ├── docker-compose.yaml
@@ -320,6 +321,8 @@ USF-Guesser/
 ---
 
 ## 13. Dev setup
+
+The full step-by-step guide for new collaborators is in [CONTRIBUTING.md](CONTRIBUTING.md). Quick reference:
 
 **Backend** (from `backend/`)
 ```
