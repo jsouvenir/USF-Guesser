@@ -1,6 +1,6 @@
-# USF Guesser: Design Doc
+# USF Guessr: Design Doc
 
-> Working name, final name TBD. A GeoGuessr-style game for the USF Tampa campus: you see a photo taken somewhere on campus, drop a pin where you think it was taken, and score points based on how close you were.
+> **usfguessr.com** (usfguesser.com redirects to it). A GeoGuessr-style game for the USF Tampa campus: you see a photo taken somewhere on campus, drop a pin where you think it was taken, and score points based on how close you were.
 
 This doc is the shared source of truth for the project. If you use an AI assistant, give it this whole file first (see [Working with AI assistants](#14-working-with-ai-assistants)).
 
@@ -90,11 +90,12 @@ The same containers run locally (Docker Compose), in CI, and in production.
 | Images | Pillow + pillow-heif (iPhone HEIC support) |
 | Auth | Google sign-in via Authlib; session in an httpOnly cookie |
 | Storage | S3 (presigned uploads), CloudFront |
+| Domains and DNS | Cloudflare Registrar and DNS: usfguessr.com (main), usfguesser.com (301 redirect) |
 | Hosting | EC2 running Docker Compose (v1) |
 | Infra as code | Terraform (state in S3 with native locking) |
 | CI/CD | GitHub Actions; AWS access through OIDC (no stored keys) |
 | Monitoring | Sentry (errors), CloudWatch (logs) |
-| Python tooling | uv, Ruff, mypy (strict), pytest, httpx2 |
+| Python tooling | uv (`uv sync --locked`), Ruff, mypy (strict, Pydantic plugin), pytest, httpx2 |
 | JS tooling | npm, ESLint |
 
 ---
@@ -199,6 +200,7 @@ The daily challenge resets at **midnight America/New_York**.
 `PhotoViewer`, `GuessMap` (react-leaflet), `RoundResult`, `FinalResult` (with share), `SignInBanner`, `Leaderboard`, `SubmitForm`, `AdminQueue`
 
 ### Layout and design
+- **Footer on every page:** "Not affiliated with the University of South Florida." Never use USF logos or official marks.
 - **Mobile-first:** photo on top, map below, with a toggle to expand the map. Most players will arrive from a link on their phone.
 - First visit: a one-line hint above the map ("Tap where you think this photo was taken"), not a popup.
 - **Design rules:**
@@ -226,13 +228,15 @@ The daily challenge resets at **midnight America/New_York**.
 
 **Local**
 - `docker compose up` runs the API, worker, Postgres with PostGIS, and Redis.
+- The `postgis/postgis` image is amd64-only, so Compose sets `platform: linux/amd64` (emulated on Apple Silicon). Postgres 18 images mount data at `/var/lib/postgresql`.
 - The frontend runs with `npm run dev`, which proxies `/api` to the backend.
 - Photo storage goes through an interface: local disk in development, S3 in production.
 
 **Production v1**
-- One EC2 instance running Docker Compose
+- One EC2 instance running Docker Compose. Use an x86 type (e.g. `t3`), not ARM `t4g`, because the PostGIS image is amd64-only.
 - S3 and CloudFront for the frontend and photos
-- Route 53 and ACM for the domain and HTTPS
+- Cloudflare DNS for both domains. Records pointing at CloudFront are **DNS only** (gray cloud), never proxied, to avoid two CDNs.
+- ACM certificate in us-east-1 for CloudFront, validated with a DNS record added in Cloudflare
 - Nightly database backups to S3
 - CloudWatch logs and Sentry
 
@@ -257,7 +261,8 @@ USF-Guesser/
 ├── README.md
 ├── DESIGN.md
 ├── LICENSE
-├── docker-compose.yml
+├── .env.example
+├── docker-compose.yaml
 ├── .github/workflows/
 │   ├── backend.yml
 │   └── frontend.yml
@@ -267,7 +272,7 @@ USF-Guesser/
 │   ├── Dockerfile
 │   ├── alembic/
 │   ├── app/
-│   │   ├── main.py        # creates the FastAPI app
+│   │   ├── main.py        # creates the app and includes routers
 │   │   ├── config.py      # settings from environment variables
 │   │   ├── db.py          # engine and sessions
 │   │   ├── routers/       # thin HTTP endpoints
@@ -331,10 +336,13 @@ npm run dev        # http://localhost:5173
 npm run lint && npm run build
 ```
 
-**Everything** (once Docker is set up, from the repo root)
+**Everything** (from the repo root)
 ```
-docker compose up
+cp .env.example .env    # then fill in your own values
+docker compose up --build
+curl localhost:8000/api/health
 ```
+To run uvicorn outside Docker, set `DATABASE_URL` with `localhost` instead of `db` as the host.
 
 ---
 
@@ -362,19 +370,19 @@ Tags: **[BE]** backend, **[FE]** frontend, **[INFRA]** infrastructure, **[CONTEN
 - [x] [INFRA] Backend CI workflow
 - [x] [FE] Frontend scaffold (Vite React + TypeScript)
 - [x] [INFRA] Frontend CI workflow running green
-- [ ] [INFRA] Remove `paths` filters from both workflows; make both checks required in the ruleset
+- [x] [INFRA] Remove `paths` filters from both workflows; make both checks required in the ruleset
 - [x] [BE] Swap `httpx` for `httpx2` in dev dependencies
 - [x] [BE] mypy strict mode; type-check `tests/` in CI
 - [ ] [FE] Install Tailwind, React Router, and react-leaflet
-- [ ] [BE] Backend Dockerfile
-- [ ] [INFRA] `docker-compose.yml` with API, PostGIS database, and Redis
-- [ ] [BE] Settings with pydantic-settings and a database session; `/health` checks the database
+- [x] [BE] Backend Dockerfile
+- [x] [INFRA] `docker-compose.yaml` with API, PostGIS database, and Redis
+- [x] [BE] Settings with pydantic-settings and a database session; `/api/health` checks the database
 - [ ] [BE] Alembic setup and first migration (all tables in section 5)
 - [ ] [BE] Seed script: USF Tampa campus with its boundary polygon
 - [ ] [BE] PostGIS distance query with a database-backed test; PostGIS service container in CI
 - [ ] [CONTENT] Take 100–200 campus photos with locations, tagged easy, medium, or hard
 - [ ] [FE] Choose a map tile provider and get an API key
-- [ ] [CONTENT] Pick the final name and check domain availability
+- [x] [CONTENT] Pick the final name and buy domains (usfguessr.com, usfguesser.com)
 
 ### Phase 1: Core game (winter break, weeks 1–2)
 - [ ] [BE] Scoring function with unit tests (perfect, close, far, and cutoff cases)
@@ -389,6 +397,7 @@ Tags: **[BE]** backend, **[FE]** frontend, **[INFRA]** infrastructure, **[CONTEN
 - [ ] [FE] `RoundResult`: both pins, the line between them, distance, and score
 - [ ] [FE] `FinalResult` with share text
 - [ ] [FE] Mobile layout, plus the first-visit hint
+- [ ] [FE] Site footer with non-affiliation disclaimer
 - [ ] [BE] Practice mode
 
 ### Phase 2: Accounts and leaderboard (weeks 2–3)
@@ -412,12 +421,13 @@ Tags: **[BE]** backend, **[FE]** frontend, **[INFRA]** infrastructure, **[CONTEN
 
 ### Phase 4: Deploy (week 4)
 - [ ] [INFRA] Create the AWS account (late December): MFA, a $10 budget alert, and an IAM user for daily use
-- [ ] [INFRA] Terraform: state bucket, photo and frontend buckets, CloudFront, EC2, security groups, IAM roles, Route 53, ACM
+- [ ] [INFRA] Terraform: state bucket, photo and frontend buckets, CloudFront, EC2, security groups, IAM roles, ACM
 - [ ] [INFRA] Production Docker Compose file and secrets
 - [ ] [INFRA] CD workflow with OIDC
 - [ ] [INFRA] Nightly database backups to S3
 - [ ] [INFRA] Sentry and CloudWatch logs
-- [ ] [INFRA] Domain and HTTPS
+- [ ] [INFRA] Domain and HTTPS: Cloudflare DNS records (DNS only) to CloudFront, ACM validation record
+- [ ] [INFRA] Redirect usfguesser.com to usfguessr.com (proxied placeholder records plus a 301 Redirect Rule)
 
 ### Phase 5: Launch (first week of spring semester)
 - [ ] [CONTENT] Playtest with friends; tune the scoring curve
@@ -449,7 +459,6 @@ Not assigned yet. Areas to split:
 Jordan owns infrastructure, reviews all pull requests, and covers any area left unassigned.
 
 ## 17. Open decisions
-- Final name and domain
 - Map tile provider
 - Scoring curve constants (after playtesting)
 - How many photos to launch with
